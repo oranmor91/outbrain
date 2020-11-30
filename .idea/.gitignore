@@ -1,2 +1,8 @@
 # Default ignored files
 /workspace.xml
+.idea/codeStyles/
+.idea/dbnavigator.xml
+.idea/gradle.xml
+.idea/misc.xml
+.idea/vcs.xml
+

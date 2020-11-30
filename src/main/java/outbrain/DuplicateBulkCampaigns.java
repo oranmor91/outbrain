@@ -6,6 +6,7 @@ import outbrain.dto.*;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+
 public class DuplicateBulkCampaigns {
 
     public static void main(String[] args) {
@@ -13,12 +14,12 @@ public class DuplicateBulkCampaigns {
         String account = Marketer.OTHER_ACCOUNT;
 
         //TODO (2) Choose the last duplication date
-        String lastDuplicationDate = "2020-11-30";
+        List<String> lastDuplicationDates = Arrays.asList("2020-12-02");
 
         //TODO (3) Choose the start dates for the new campaigns
-        List<String> newCampaignForDates = Collections.singletonList("2020-12-01");
+        List<String> newCampaignForDates = Collections.singletonList("2020-12-03");
 
-        OutBrainApiImpl outBrainApi = new OutBrainApiImpl(Token.TARZO_TOKEN, account, newCampaignForDates, lastDuplicationDate);
+        OutBrainApiImpl outBrainApi = new OutBrainApiImpl(Token.TARZO_TOKEN, account, newCampaignForDates, lastDuplicationDates);
         List<Campaign> newCampaigns = outBrainApi.duplicateCampaigns();
         System.out.println("created " + newCampaigns.size() + " campaigns for account: " + account);
         newCampaigns.forEach(newCampaign -> System.out.println(newCampaign.getName()));

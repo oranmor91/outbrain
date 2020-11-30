@@ -26,7 +26,6 @@ public class OutBrainApiImpl implements OutBrainApi {
     private String getCampaignUrl = "https://api.outbrain.com/amplify/v0.1/campaigns/";
     private Set<String> campaignNames;
 
-
     public OutBrainApiImpl(String token, String account, String campaignId, List<String> newCampaignForDates) {
         this.client = ClientBuilder.newClient();
         this.mapper = new ObjectMapper();
@@ -34,16 +33,21 @@ public class OutBrainApiImpl implements OutBrainApi {
         this.account = account;
         this.campaigns = Collections.singletonList(getCampaign(campaignId));
         this.newCampaignForDates = newCampaignForDates;
+        this.campaignNames = new HashSet<>();
     }
 
-    public OutBrainApiImpl(String token, String account, List<String> newCampaignForDates, String lastDuplicationDate) {
+    public OutBrainApiImpl(String token, String account, List<String> newCampaignForDates, List<String> lastDuplicationDates) {
         this.client = ClientBuilder.newClient();
         this.mapper = new ObjectMapper();
         this.token = token;
         this.account = account;
-        CampaignsByDate campaignsByDate = getCampaignsByDate(lastDuplicationDate);
-        this.campaigns = campaignsByDate.getRelevantCampaigns();
-        this.campaignNames = campaignsByDate.getCampaignNames();
+        this.campaigns = new ArrayList<>();
+        this.campaignNames = new HashSet<>();
+        for (String lastDuplicationDate : lastDuplicationDates) {
+            CampaignsByDate campaignsByDate = getCampaignsByDate(lastDuplicationDate);
+            this.campaigns.addAll(campaignsByDate.getRelevantCampaigns());
+            this.campaignNames.addAll(campaignsByDate.getCampaignNames());
+        }
         this.newCampaignForDates = newCampaignForDates;
     }
 
@@ -66,7 +70,8 @@ public class OutBrainApiImpl implements OutBrainApi {
         List<CampaignRetrive> relevantCampaigns =
                 allCampaigns.stream()
                         .filter(campaignRetrive -> getDateByString(campaignRetrive.getBudget().getStartDate()).equals(lastDuplicationDate) &&
-                                !campaignRetrive.getLiveStatus().getOnAirReason().equals("CAMPAIGN_DISABLED"))
+                                !campaignRetrive.getLiveStatus().getOnAirReason().equals("CAMPAIGN_DISABLED") &&
+                                !campaignRetrive.getLiveStatus().getOnAirReason().equals("PAUSED"))
                         .collect(Collectors.toList());
 
         CampaignsByDate campaignsByDate = new CampaignsByDate(campaignNames, relevantCampaigns);
@@ -75,7 +80,7 @@ public class OutBrainApiImpl implements OutBrainApi {
 
     private CampaignResponse getCampaignsResponse(int offset) {
         String getCampaignsByAccountUrl = "https://api.outbrain.com/amplify/v0.1/marketers/" + account + "/campaigns" +
-                "?includeArchived=false&fetch=all&extraFields=Locations%2CCampaignOptimization&limit=50&offset=";
+                "?includeArchived=true&fetch=all&extraFields=Locations%2CCampaignOptimization&limit=50&offset=";
         Response response = client.target(getCampaignsByAccountUrl + offset)
                 .request(MediaType.APPLICATION_JSON)
                 .header("OB-TOKEN-V1", token)
@@ -86,7 +91,7 @@ public class OutBrainApiImpl implements OutBrainApi {
         try {
             campaignResponse = mapper.readValue(campaignsInJsonString, CampaignResponse.class);
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("error to get campaign: " + e + " " +"campaignsInJsonString:" +  campaignsInJsonString);
         }
         return campaignResponse;
     }
@@ -111,7 +116,7 @@ public class OutBrainApiImpl implements OutBrainApi {
         try {
             campaign = mapper.readValue(campaignInJsonString, CampaignRetrive.class);
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("error to get campaign: " + e + " " +"campaignInJsonString:" +  campaignInJsonString);
         }
         return campaign;
     }
@@ -133,7 +138,7 @@ public class OutBrainApiImpl implements OutBrainApi {
         try {
              json = ow.writeValueAsString(budgetCreate);
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("error to get budgetCreate: " + e + " " +"budgetCreate:" +  budgetCreate);
         }
         Entity payload = Entity.json(json);
 
@@ -147,7 +152,7 @@ public class OutBrainApiImpl implements OutBrainApi {
         try {
             budget = mapper.readValue(budgetInJsonString, BudgetRetreive.class);
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("error to get budget: " + e + " " +"budgetInJsonString:" +  budgetInJsonString);
         }
         return budget;
     }
@@ -164,7 +169,7 @@ public class OutBrainApiImpl implements OutBrainApi {
         try {
             promotedLinks = mapper.readValue(promotedLinksInJsonString, PromotedLinks.class);
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("error to get promotedLinks: " + e + " " +"promotedLinksInJsonString:" +  promotedLinksInJsonString);
         }
         return promotedLinks;
     }
@@ -179,11 +184,12 @@ public class OutBrainApiImpl implements OutBrainApi {
         Budget budget = createBudget(otherCampaign.getBudget().getAmount(),
                  otherCampaign.getBudget().getPacing(), otherCampaign.getBudget().getType(), newCampaignDate);
         campaign.setBudgetId(budget.getId());
-        campaign.setName(createNewName(otherCampaign.getName(), countName));
+        String newName = createNewName(otherCampaign.getName(), countName);
+        campaign.setName(newName);
         campaign.setEnabled(otherCampaign.getEnabled());
         campaign.setCpc(otherCampaign.getCpc());
         campaign.setTargeting(targeting);
-        campaign.setSuffixTrackingCode(createSuffixTrackingCode(otherCampaign.getName(), otherCampaign.getSuffixTrackingCode(), countName));
+        campaign.setSuffixTrackingCode(createSuffixTrackingCode(otherCampaign.getName(), otherCampaign.getSuffixTrackingCode(), newName));
         campaign.setFeeds(feeds);
         campaign.setOnAirType(otherCampaign.getOnAirType());
         campaign.setObjective(otherCampaign.getObjective());
@@ -198,7 +204,7 @@ public class OutBrainApiImpl implements OutBrainApi {
         try {
             json = ow.writeValueAsString(campaign);
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("error to get campaign: " + e + " " +"campaign:" +  campaign);
         }
         Entity<String> payload = Entity.json(json);
         String createCampaignUrl = "https://api.outbrain.com/amplify/v0.1/campaigns";
@@ -211,38 +217,59 @@ public class OutBrainApiImpl implements OutBrainApi {
         try {
             campaignRetreive = mapper.readValue(campaigntInJsonString, CampaignRetrive.class);
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("error to get campaign: " + e + " " +"campaigntInJsonString:" +  campaigntInJsonString);
         }
         return campaignRetreive;
     }
 
-    private String createSuffixTrackingCode(String currentCampaignName, String currentSuffixTrackingCode, int countName) {
+    private String createSuffixTrackingCode(String currentCampaignName, String currentSuffixTrackingCode, String newName) {
         int firstIndex = currentSuffixTrackingCode.indexOf(currentCampaignName);
         int lastCharIndex = firstIndex + currentCampaignName.length();
-        String newName = createNewName(currentCampaignName, countName);
         return currentSuffixTrackingCode.substring(0, firstIndex) + newName + currentSuffixTrackingCode.substring(lastCharIndex);
     }
 
-    private String createNewName(String currentName , int countName) {
-        String substring = currentName.substring(0, currentName.length() - 1);
-        String lastChar = currentName.substring(currentName.length() - 1);
-        int number = 0;
-        try {
-            number = Integer.parseInt(lastChar);
-        } catch (NumberFormatException e) {
+    public String createNewName(String currentName , int countName) {
+        int newNumber;
+        int currentNumber = 0;
+        int numOfDigit = getNumOfDigit(currentName);
+        String substring = currentName.substring(0, currentName.length() - numOfDigit);
+        if (numOfDigit == 0){
             substring += "*";
+        }else{
+            try {
+                currentNumber = Integer.parseInt(currentName.substring(currentName.length() - numOfDigit));
+            } catch (NumberFormatException e) {
+                System.out.println("error int name ..." + e);
+            }
         }
-        int newNumber = number + countName;
-        String newLastChar = String.valueOf(newNumber);
-
-        String newName = substring + newLastChar;
+        newNumber = currentNumber + countName;
+        String newName = substring + newNumber;
         int anotherCount = 1;
         while (campaignNames.contains(newName)){
-            newName = createNewName(newName, countName + anotherCount);
+            int number = newNumber + anotherCount;
+            newName = substring + number;
             anotherCount ++;
         }
-//        campaignNames.add(newName);
+        campaignNames.add(newName);
         return newName;
+    }
+
+    private int getNumOfDigit(String currentName) {
+        int numOfDigit = 1;
+        while (numOfDigit <= 5){
+            String lastChar = currentName.substring(currentName.length() - numOfDigit, currentName.length() - numOfDigit + 1);
+            try {
+                Integer.parseInt(lastChar);
+            } catch (NumberFormatException e) {
+                return numOfDigit - 1;
+            }
+            if (lastChar.equals("*")){
+                return numOfDigit - 1;
+            }
+            numOfDigit++;
+        }
+
+        return 0;
     }
 
     private PromotedLink createPromotedLink(String campaignId, PromotedLink otherPromotedLink){
@@ -266,7 +293,7 @@ public class OutBrainApiImpl implements OutBrainApi {
         try {
             json = ow.writeValueAsString(promotedLink);
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("error to get promotedLinks: " + e + " " +"promotedLink:" +  promotedLink);
         }
         Entity payload = Entity.json(json);
         String createPromotedLinkUrl = "https://api.outbrain.com/amplify/v0.1/campaigns/" + campaignId + "/promotedLinks";
@@ -279,7 +306,7 @@ public class OutBrainApiImpl implements OutBrainApi {
         try {
             prmotdLink = mapper.readValue(promotedLinkInJsonString, PromotedLink.class);
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("error to get promotedLinks: " + e + " " +"promotedLinksInJsonString:" +  promotedLinkInJsonString);
         }
         return prmotdLink;
     }
@@ -303,6 +330,8 @@ public class OutBrainApiImpl implements OutBrainApi {
         targeting.setLocations(locations);
 
         targeting.setOperatingSystems(originTargeting.getOperatingSystems());
+
+        targeting.setExcludeAdBlockUsers(originTargeting.getExcludeAdBlockUsers());
         return targeting;
     }
 
@@ -316,11 +345,22 @@ public class OutBrainApiImpl implements OutBrainApi {
     }
 
     public List<Campaign> duplicateCampaigns(){
+        String pattern = "HH:mm:ss";
+        DateFormat df = new SimpleDateFormat(pattern);
+        Date startTime = new Date();
+        String startTimeString = df.format(startTime);
+        System.out.println("Start duplication at " + startTimeString);
+        System.out.println("----------------------------------------");
         List<Campaign> newCampaigns = new ArrayList<>();
+        int numOfDuplication = 1;
         for (CampaignRetrive originalCampaign : campaigns) {
             int countName = 1;
             for (String newCampaignDate : newCampaignForDates) {
                 Campaign campaign = duplicateCampaign(originalCampaign, countName, newCampaignDate);
+                Date now = new Date();
+                String time = df.format(now);
+                System.out.println("(" + numOfDuplication + ")" + " Created campaign: " + campaign.getName() + " ,creation time: " + time);
+                numOfDuplication ++;
                 countName ++;
                 newCampaigns.add(campaign);
             }
